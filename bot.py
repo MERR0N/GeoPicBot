@@ -63,7 +63,9 @@ def start(message):
             bot.send_message(message.chat.id, 'Unfortunately, I can not understand these coordinates')
         else:
             geo_result = geo(*safe_args)
-            for response in geo_result:
+            for response in geo_result[0]:
+                bot.send_message(message.chat.id, response)
+            for response in geo_result[1]:
                 bot.send_message(message.chat.id, response)
 
 
