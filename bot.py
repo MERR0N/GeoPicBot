@@ -10,7 +10,7 @@ instagram_token = ''
 DEFAULT_RADIUS = 1000
 
 
-def geo(longitude, latitude, radius=DEFAULT_RADIUS):
+def geo(latitude, longitude, radius=DEFAULT_RADIUS):
     global instagram_token
     url_instagram = 'https://api.instagram.com/v1/media/search?lat={}&lng={}&distance={}&access_token={}'\
         .format(latitude, longitude, radius, instagram_token)
@@ -48,14 +48,17 @@ def geo(longitude, latitude, radius=DEFAULT_RADIUS):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, 'Please send me your location or use command /location')
+    bot.reply_to(message, 'Please send me your location or use command /location lat long radius (in meters)')
 
 
 @bot.message_handler(commands=['location'])
 def start(message):
-    args = message.text.split()[1:]
+    args = message.text
+    if ',' in args:
+        args = args.replace(',', ' ')
+    args = args.split()[1:]
     if len(args) < 2:
-        bot.send_message(message.chat.id, 'You must send longitude and latitude. And maybe radius')
+        bot.send_message(message.chat.id, 'You must send longitude and latitude. And maybe radius (in meters)')
     else:
         try:
             safe_args = [float(arg) for arg in args]
@@ -73,7 +76,7 @@ def start(message):
 def location(message):
     longitude = message.location.longitude
     latitude = message.location.latitude
-    geo_result = geo(longitude, latitude)
+    geo_result = geo(latitude, longitude)
     for response in geo_result[0]:
         bot.send_message(message.chat.id, response)
     for response in geo_result[1]:
