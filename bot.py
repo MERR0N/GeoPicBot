@@ -48,7 +48,7 @@ def geo(longitude, latitude, radius=DEFAULT_RADIUS):
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, message.chat.id)
+    bot.reply_to(message, 'Please send me your location or use command /location')
 
 
 @bot.message_handler(commands=['location'])
