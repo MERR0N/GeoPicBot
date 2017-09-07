@@ -1,14 +1,47 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
+from peewee import *
 import telebot
 import requests
+import threading
+import time
 
 
 bot = telebot.TeleBot('')
 instagram_token = ''
 
+db = SqliteDatabase('bot.db', fields={'id': 'INTEGER AUTOINCREMENT'})
 DEFAULT_RADIUS = 1000
 PHOTOS_PER_MESSAGE = 10
+SUBSCRIBE_CHECK = 216000
+
+
+class Response:
+    def __init__(self, message, user, link, timestamp, description, location=None):
+        self.message = message
+        self.user = user
+        self.link = link
+        self.timestamp = timestamp
+        self.description = description
+        self.location = location
+
+
+class Sub(Model):
+    id = IntegerField(primary_key=True)
+    user_id = IntegerField()
+    lat = CharField()
+    long = CharField()
+    radius = CharField()
+    last_ig = IntegerField(default=int(datetime.today().timestamp()))
+    last_vk = IntegerField(default=int(datetime.today().timestamp()))
+
+    class Meta:
+        database = db
+
+db.connect()
+
+if not Sub.table_exists():
+    db.create_tables([Sub])
 
 
 def geo(latitude, longitude, radius=DEFAULT_RADIUS):
@@ -23,26 +56,27 @@ def geo(latitude, longitude, radius=DEFAULT_RADIUS):
     for ig in result_instagram:
         username = ig['user']['username']
         link = ig['link']
-        location = ig['location']['name'] if ig['location']['name'] else 'Unknown place'
         date = datetime.fromtimestamp(int(ig['created_time']))
+        timestamp = int(ig['created_time'])
         description = ig['caption']['text'] if ig['caption'] else 'No description'
-
-        instagram_response = "Username: {}\nLink: {}\nLocation: {}\nDate: {}\nDescription: {}\n\n\n" \
+        location = ig['location']['name'] if ig['location']['name'] else 'Unknown place'
+        message = "Username: {}\nLink: {}\nLocation: {}\nDate: {}\nDescription: {}\n\n\n" \
             .format(username, link, location, date, description)
-
+        instagram_response = Response(message, username, link, timestamp, description, location)
         instagram.append(instagram_response)
 
     vk = []
     for vkcom in result_vk:
-        id = vkcom['owner_id']
+        username = vkcom['owner_id']
         link = 'https://vk.com/photo{}_{}'.format(vkcom['owner_id'], vkcom['pid'])
         img = vkcom['src_big']
         date = datetime.fromtimestamp(int(vkcom['created']))
+        timestamp = int(vkcom['created'])
         description = vkcom['text'] if vkcom['text'] else 'No description'
 
-        vk_response = "ID: id{}\nLink: {}\nImage: {}\nDate: {}\nDescription: {}\n\n\n" \
-            .format(id, link, img, date, description)
-
+        message = "ID: id{}\nLink: {}\nImage: {}\nDate: {}\nDescription: {}\n\n\n" \
+            .format(username, link, img, date, description)
+        vk_response = Response(message, username, link, timestamp, description)
         vk.append(vk_response)
     return instagram, vk
 
@@ -50,6 +84,27 @@ def geo(latitude, longitude, radius=DEFAULT_RADIUS):
 @bot.message_handler(commands=['start'])
 def start(message):
     bot.reply_to(message, 'Please send me your location or use command /location lat long radius (in meters)')
+
+
+@bot.message_handler(commands=['sub'])
+def sub(message):
+    args = message.text
+    if ',' in args:
+        args = args.replace(',', ' ')
+    args = args.split()[1:]
+    if len(args) < 2:
+        bot.reply_to(message, 'You must send longitude and latitude. And maybe radius (in meters)')
+    else:
+        latitude = args[0]
+        longitude = args[1]
+        print(args)
+        print(len(args))
+        if len(args) > 3:
+            radius = args[2]
+        else:
+            radius = DEFAULT_RADIUS
+        Sub(user_id=message.chat.id, lat=latitude, long=longitude, radius=radius).save()
+        bot.reply_to(message, 'Got it!')
 
 
 @bot.message_handler(commands=['location'])
@@ -67,18 +122,14 @@ def location(message):
             bot.send_message(message.chat.id, 'Unfortunately, I can not understand these coordinates')
         else:
             geo_result = geo(*safe_args)
-            instagram = list(geo_result[0])
-            vk = list(geo_result[1])
-            while instagram:
-                response = geo_result[0][:PHOTOS_PER_MESSAGE]
-                response = "".join(response)
-                instagram = instagram[PHOTOS_PER_MESSAGE:]
-                bot.send_message(message.chat.id, response)
-            while vk:
-                response = vk[:PHOTOS_PER_MESSAGE]
-                response = "".join(response)
-                vk = vk[PHOTOS_PER_MESSAGE:]
-                bot.send_message(message.chat.id, response, disable_web_page_preview=True)
+            geo_result = geo_result[0] + geo_result[1]
+            while geo_result:
+                response_text = []
+                response = geo_result[:PHOTOS_PER_MESSAGE]
+                response_text += [resp.message for resp in response]
+                response_text = ''.join(response_text)
+                geo_result = geo_result[PHOTOS_PER_MESSAGE:]
+                bot.send_message(message.chat.id, response_text, disable_web_page_preview=True)
 
 
 @bot.message_handler(content_types=['location'])
@@ -86,17 +137,34 @@ def location(message):
     longitude = message.location.longitude
     latitude = message.location.latitude
     geo_result = geo(latitude, longitude)
-    instagram = list(geo_result[0])
-    vk = list(geo_result[1])
-    while instagram:
-        response = geo_result[0][:PHOTOS_PER_MESSAGE]
-        response = "".join(response)
-        instagram = instagram[PHOTOS_PER_MESSAGE:]
-        bot.send_message(message.chat.id, response)
-    while vk:
-        response = vk[:PHOTOS_PER_MESSAGE]
-        response = "".join(response)
-        vk = vk[PHOTOS_PER_MESSAGE:]
-        bot.send_message(message.chat.id, response, disable_web_page_preview=True)
+    while geo_result:
+        response_text = []
+        response = geo_result[:PHOTOS_PER_MESSAGE]
+        response_text += [resp.message for resp in response]
+        response_text = ''.join(response_text)
+        geo_result = geo_result[PHOTOS_PER_MESSAGE:]
+        bot.send_message(message.chat.id, response_text, disable_web_page_preview=True)
 
-bot.polling()
+
+def subscribe_daemon():
+    while True:
+        subs = Sub.select()
+        for sub in subs:
+            geo_result = geo(sub.lat, sub.long, sub.radius)
+            print(geo_result)
+            for instagram in reversed(geo_result[0]):
+                print('instagram')
+                if instagram.timestamp > sub.last_ig:
+                    print('instagram if')
+                    Sub.update(last_ig=instagram.timestamp).where(Sub.id == sub.id).execute()
+                    bot.send_message(sub.user_id, instagram.message)
+
+            for vk in reversed(geo_result[1]):
+                if vk.timestamp > sub.last_vk:
+                    Sub.update(last_vk=vk.timestamp).where(Sub.id == sub.id).execute()
+                    bot.send_message(sub.user_id, vk.message)
+
+        time.sleep(SUBSCRIBE_CHECK)
+
+threading.Thread(target=bot.polling).start()
+threading.Thread(target=subscribe_daemon).start()
