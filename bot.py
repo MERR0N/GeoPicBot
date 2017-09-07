@@ -8,6 +8,7 @@ bot = telebot.TeleBot('')
 instagram_token = ''
 
 DEFAULT_RADIUS = 1000
+PHOTOS_PER_MESSAGE = 10
 
 
 def geo(latitude, longitude, radius=DEFAULT_RADIUS):
@@ -52,7 +53,7 @@ def start(message):
 
 
 @bot.message_handler(commands=['location'])
-def start(message):
+def location(message):
     args = message.text
     if ',' in args:
         args = args.replace(',', ' ')
@@ -66,10 +67,18 @@ def start(message):
             bot.send_message(message.chat.id, 'Unfortunately, I can not understand these coordinates')
         else:
             geo_result = geo(*safe_args)
-            for response in geo_result[0]:
+            instagram = list(geo_result[0])
+            vk = list(geo_result[1])
+            while instagram:
+                response = geo_result[0][:PHOTOS_PER_MESSAGE]
+                response = "".join(response)
+                instagram = instagram[PHOTOS_PER_MESSAGE:]
                 bot.send_message(message.chat.id, response)
-            for response in geo_result[1]:
-                bot.send_message(message.chat.id, response)
+            while vk:
+                response = vk[:PHOTOS_PER_MESSAGE]
+                response = "".join(response)
+                vk = vk[PHOTOS_PER_MESSAGE:]
+                bot.send_message(message.chat.id, response, disable_web_page_preview=True)
 
 
 @bot.message_handler(content_types=['location'])
@@ -77,9 +86,17 @@ def location(message):
     longitude = message.location.longitude
     latitude = message.location.latitude
     geo_result = geo(latitude, longitude)
-    for response in geo_result[0]:
+    instagram = list(geo_result[0])
+    vk = list(geo_result[1])
+    while instagram:
+        response = geo_result[0][:PHOTOS_PER_MESSAGE]
+        response = "".join(response)
+        instagram = instagram[PHOTOS_PER_MESSAGE:]
         bot.send_message(message.chat.id, response)
-    for response in geo_result[1]:
-        bot.send_message(message.chat.id, response)
+    while vk:
+        response = vk[:PHOTOS_PER_MESSAGE]
+        response = "".join(response)
+        vk = vk[PHOTOS_PER_MESSAGE:]
+        bot.send_message(message.chat.id, response, disable_web_page_preview=True)
 
 bot.polling()
