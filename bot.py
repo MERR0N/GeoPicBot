@@ -105,6 +105,37 @@ def sub(message):
         bot.reply_to(message, 'Got it!')
 
 
+@bot.message_handler(commands=['sublist'])
+def sublist(message):
+    subs = Sub.select().where(Sub.user_id == message.chat.id)
+    response = ''
+    visible_id = 1
+    for sub in subs:
+        response += "{} lat: {} long: {} radius: {} last update instagram: {} last update vk: {}\n"\
+            .format(visible_id, sub.lat, sub.long, sub.radius, datetime.fromtimestamp(int(sub.last_ig)),
+                    datetime.fromtimestamp(int(sub.last_vk)))
+        visible_id += 1
+    bot.reply_to(message, response)
+
+
+@bot.message_handler(commands=['subremove'])
+def subremove(message):
+    args = message.text
+    args = args.split()[1:]
+    if len(args) < 1:
+        bot.reply_to(message, 'You must specify a subscription number')
+    else:
+        try:
+            sub_num = int(args[0])
+        except ValueError:
+            bot.reply_to(message, 'Not a number!')
+        else:
+            sub_id = Sub.select().where(Sub.user_id == message.chat.id).offset(sub_num - 1).limit(1)
+            Sub.delete().where(Sub.id == sub_id).execute()
+
+            bot.reply_to(message, 'Done!')
+
+
 @bot.message_handler(commands=['location'])
 def location(message):
     args = message.text
