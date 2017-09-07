@@ -97,8 +97,6 @@ def sub(message):
     else:
         latitude = args[0]
         longitude = args[1]
-        print(args)
-        print(len(args))
         if len(args) > 3:
             radius = args[2]
         else:
@@ -151,11 +149,8 @@ def subscribe_daemon():
         subs = Sub.select()
         for sub in subs:
             geo_result = geo(sub.lat, sub.long, sub.radius)
-            print(geo_result)
             for instagram in reversed(geo_result[0]):
-                print('instagram')
                 if instagram.timestamp > sub.last_ig:
-                    print('instagram if')
                     Sub.update(last_ig=instagram.timestamp).where(Sub.id == sub.id).execute()
                     bot.send_message(sub.user_id, instagram.message)
 
